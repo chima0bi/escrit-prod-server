@@ -1,46 +1,56 @@
-// Thin wrapper around Nodemailer/Gmail SMTP for the two transactional
+// Thin wrapper around Brevo's transactional email HTTP API for the two
 // emails this app sends: an OTP to verify a new email address, and a
-// password-reset link. If SMTP_USER/SMTP_PASS aren't set (e.g. running
-// locally without them configured), both functions log the email to
-// the console instead of sending — the flow stays fully testable, you
-// just read the code/link from the server log rather than an inbox.
-import nodemailer from "nodemailer";
+// password-reset link. Deliberately plain `fetch` rather than Brevo's
+// SDK — this is one POST with a JSON body, not worth a dependency.
+//
+// This goes over HTTPS (api.brevo.com, port 443), not SMTP — Render's
+// free tier blocks outbound SMTP ports (25/465/587) entirely, which is
+// what killed the previous Gmail-SMTP setup. An HTTP API call is a
+// normal outbound request like any other and isn't affected.
+//
+// If BREVO_API_KEY isn't set (e.g. running locally without it
+// configured), both functions log the email to the console instead of
+// sending — the flow stays fully testable, you just read the code/link
+// from the server log rather than an inbox.
 import { env } from "../config/env.js";
 
-const transporter =
-  env.smtp.user && env.smtp.pass
-    ? nodemailer.createTransport({
-        host: env.smtp.host,
-        port: env.smtp.port,
-        secure: env.smtp.port === 465, // true for port 465 (SSL), false for 587 (STARTTLS)
-        auth: { user: env.smtp.user, pass: env.smtp.pass },
-      })
-    : null;
-
 async function send({ to, subject, html, devFallbackLabel, devFallbackValue }) {
-  if (!transporter) {
+  if (!env.brevo.apiKey || !env.brevo.fromAddress) {
     console.warn(
-      `[mailer] SMTP not configured (SMTP_USER/SMTP_PASS missing) — not sending "${subject}" to ${to}.\n` +
+      `[mailer] Brevo not configured (BREVO_API_KEY/BREVO_FROM_ADDRESS missing) — not sending "${subject}" to ${to}.\n` +
         `[mailer] ${devFallbackLabel}: ${devFallbackValue}`,
     );
     return;
   }
   try {
-    await transporter.sendMail({
-      from: env.smtp.fromAddress,
-      to,
-      subject,
-      html,
+    const res = await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        "api-key": env.brevo.apiKey,
+      },
+      body: JSON.stringify({
+        sender: { name: env.brevo.fromName, email: env.brevo.fromAddress },
+        to: [{ email: to }],
+        subject,
+        htmlContent: html,
+      }),
     });
+    if (!res.ok) {
+      // Brevo's error body (e.g. "sender not verified", bad key,
+      // over the free-plan daily cap) is the useful part — surface
+      // it rather than just the status code.
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.message || `Brevo responded ${res.status}`);
+    }
   } catch (err) {
-    // Unlike Resend, Nodemailer does throw on a rejected send (bad
-    // app password, Gmail rate limit, etc) — but we still don't want
-    // that to break the calling route (e.g. registration shouldn't
-    // 500 just because the OTP email bounced), so it's caught and
-    // logged here, with the same dev fallback so the flow is still
-    // usable while you sort out the SMTP credentials.
+    // Same reasoning as before: don't let a failed send break the
+    // calling route (registration/resend shouldn't 500 just because
+    // the email bounced) — log it and fall back to the console value
+    // so the flow is still usable while you sort out Brevo.
     console.error(
-      `[mailer] SMTP send failed for "${subject}" to ${to}:`,
+      `[mailer] Brevo send failed for "${subject}" to ${to}:`,
       err.message,
     );
     console.warn(`[mailer] ${devFallbackLabel}: ${devFallbackValue}`);
