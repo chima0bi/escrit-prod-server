@@ -61,22 +61,23 @@ export const env = {
     clientId: process.env.GOOGLE_CLIENT_ID || null,
   },
 
-  // SMTP (Gmail), for OTP + password-reset emails. Also optional at
-  // boot — see services/mailer.js, which falls back to logging the
-  // email to the console in development so the flow is still
-  // testable without credentials configured.
+  // Brevo, for OTP + password-reset emails, sent over their HTTPS API
+  // (not SMTP — Render's free tier blocks outbound SMTP ports
+  // entirely, but this is a plain HTTPS POST like any other API
+  // call, so it isn't affected). Also optional at boot — see
+  // services/mailer.js, which falls back to logging the email to the
+  // console in development so the flow is still testable without
+  // credentials configured.
   //
-  // SMTP_PASS must be a 16-character Google *App Password*, not the
-  // real account password — Gmail rejects normal-password SMTP
-  // logins outright. Generate one at
-  // https://myaccount.google.com/apppasswords (requires 2-Step
-  // Verification to be turned on first).
-  smtp: {
-    host: process.env.SMTP_HOST || "smtp.gmail.com",
-    port: Number(process.env.SMTP_PORT) || 587,
-    user: process.env.SMTP_USER || null,
-    pass: process.env.SMTP_PASS || null,
-    fromAddress: process.env.SMTP_FROM_ADDRESS || process.env.SMTP_USER || null,
+  // BREVO_API_KEY comes from Settings -> SMTP & API -> API Keys in
+  // the Brevo dashboard (starts with "xkeysib-"). BREVO_FROM_ADDRESS
+  // must be a sender you've verified under Settings -> Senders,
+  // Domains & Dedicated IPs -> Senders — Brevo rejects sends from an
+  // unverified address.
+  brevo: {
+    apiKey: process.env.BREVO_API_KEY || null,
+    fromAddress: process.env.BREVO_FROM_ADDRESS || null,
+    fromName: process.env.BREVO_FROM_NAME || "Escrit",
   },
 
   // Where the client is hosted — used to build the links inside
