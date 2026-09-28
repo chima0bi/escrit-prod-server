@@ -1,7 +1,7 @@
 // Central place for reading and validating environment variables.
 // Nothing else in the codebase should call `process.env` directly —
 // that way missing config fails loudly, once, at startup.
-import 'dotenv/config';
+import "dotenv/config";
 
 function required(name) {
   const value = process.env[name];
@@ -35,6 +35,12 @@ export const env = {
     secretKey: required("PAYSTACK_SECRET_KEY"),
     publicKey: required("PAYSTACK_PUBLIC_KEY"),
     baseUrl: process.env.PAYSTACK_BASE_URL || "https://api.paystack.co",
+  },
+
+  cloudinary: {
+    cloudName: process.env.CLOUDINARY_CLOUD_NAME || null,
+    apiKey: process.env.CLOUDINARY_API_KEY || null,
+    apiSecret: process.env.CLOUDINARY_API_SECRET || null,
   },
 
   autoReleaseHours: Number(process.env.AUTO_RELEASE_HOURS) || 72,
